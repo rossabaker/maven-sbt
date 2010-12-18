@@ -137,7 +137,7 @@ trait MavenDependencies extends DefaultProject {
 
 
   def updateWithMaven(artifactTypes: ArtifactType*): Option[String] = {
-    try { {
+    try {
       log.info("Checking dependencies...")
 
       val compileDeps = selectDependencies("compile", Set() ++ artifactTypes)
@@ -147,7 +147,6 @@ trait MavenDependencies extends DefaultProject {
       syncDeps(testDeps, (managedDependencyPath / "test").asFile)
 
       None
-    }
     } catch {
       case e: Exception => {
         log.error(e.getMessage)
