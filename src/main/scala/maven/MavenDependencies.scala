@@ -1,54 +1,17 @@
 package maven
 
+import java.io.File
+import scala.collection.mutable
 import sbt._
 import sbt.FileUtilities.copyFile
-import scala.collection.mutable
 import org.apache.tools.ant.{Project => AntProject}
 import org.apache.tools.ant.types.FileSet
 import org.apache.tools.ant.types.resources.FileResource
-import java.io.File
 import org.apache.maven.artifact.ant.{Pom, WritePomTask, DependenciesTask}
 import org.apache.maven.project.MavenProject
-import java.lang.{Throwable, String}
 import org.apache.maven.model.{Repository, Model, Exclusion, Dependency}
 
-class SbtLogger(log: Logger) extends org.codehaus.plexus.logging.Logger {
-  def warn(p1: String, p2: Throwable) = log.warn(p1)
-
-  def warn(p1: String) = log.warn(p1)
-
-  def isWarnEnabled = log.atLevel(Level.Warn)
-
-  def isInfoEnabled = log.atLevel(Level.Info)
-
-  def isFatalErrorEnabled = log.atLevel(Level.Error)
-
-  def isErrorEnabled = log.atLevel(Level.Error)
-
-  def isDebugEnabled = log.atLevel(Level.Debug)
-
-  def info(p1: String, p2: Throwable) = log.info(p1)
-
-  def info(p1: String) = log.info(p1)
-
-  def getThreshold = 0
-
-  def getName = ""
-
-  def getChildLogger(p1: String) = null
-
-  def fatalError(p1: String, p2: Throwable) = log.error(p1)
-
-  def fatalError(p1: String) = log.error(p1)
-
-  def error(p1: String, p2: Throwable) = log.error(p1)
-
-  def error(p1: String) = log.error(p1)
-
-  def debug(p1: String, p2: Throwable) = log.debug(p1)
-
-  def debug(p1: String) = log.debug(p1)
-}
+// TODO: 12/17/10 <coda> -- fix logging
 
 trait MavenDependencies extends DefaultProject {
   sealed trait ArtifactType
@@ -65,7 +28,7 @@ trait MavenDependencies extends DefaultProject {
   }
 
   private lazy val mavenProject = {
-    new MavenProject(mavenModel, new SbtLogger(log))
+    new MavenProject(mavenModel)
   }
 
   private lazy val mavenModel = {
