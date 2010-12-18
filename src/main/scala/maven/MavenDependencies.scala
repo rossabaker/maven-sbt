@@ -7,7 +7,7 @@ import org.apache.tools.ant.{Project => AntProject}
 import org.apache.tools.ant.types.FileSet
 import org.apache.tools.ant.types.resources.FileResource
 import java.io.File
-import org.apache.maven.artifact.ant.{Pom, WritePomTask, RemoteRepository, DependenciesTask}
+import org.apache.maven.artifact.ant.{Pom, WritePomTask, DependenciesTask}
 import org.apache.maven.project.MavenProject
 import java.lang.{Throwable, String}
 import org.apache.maven.model.{Repository, Model, Exclusion, Dependency}
