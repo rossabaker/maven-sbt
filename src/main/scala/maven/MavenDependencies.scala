@@ -26,13 +26,6 @@ trait MavenDependencies extends DefaultProject {
 
   override def classpathFilter = super.classpathFilter -- "*-sources.jar" -- "*-javadoc.jar"
 
-  private lazy val mavenContainer = {
-    val container = new DefaultPlexusContainer
-    container.initialize()
-    container.start()
-    container
-  }
-
   private lazy val mavenPom = {
     val p = new Pom
     p.setMavenProject(mavenProject)
@@ -87,11 +80,7 @@ trait MavenDependencies extends DefaultProject {
   }
   }.toSeq
 
-  private lazy val antProject = {
-    val p = new AntProject
-    p.addReference("org.codehaus.plexus.PlexusContainer", mavenContainer)
-    p
-  }
+  private lazy val antProject = new AntProject
 
   private def selectDependencies(scope: String, artifactTypes: Set[ArtifactType]) = {
     def appendFiles(filesetId: String, deps: mutable.ArrayBuffer[File]) {
