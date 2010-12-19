@@ -1,6 +1,7 @@
 package maven
 
 import scala.collection.mutable
+import java.io.File
 import sbt._
 import sbt.FileUtilities.copyFile
 import org.apache.tools.ant.{Project => AntProject}
@@ -9,11 +10,8 @@ import org.apache.tools.ant.types.resources.FileResource
 import org.apache.maven.project.MavenProject
 import org.apache.maven.model.{Repository, Model, Exclusion, Dependency}
 import org.apache.maven.artifact.ant.{InstallTask, Pom, WritePomTask, DependenciesTask}
-import org.codehaus.plexus.embed.Embedder
-import org.codehaus.plexus.{DefaultPlexusContainer, PlexusContainer}
-import java.io.{StringReader, InputStreamReader, File}
-import java.net.{URL, URLClassLoader}
-import org.codehaus.classworlds.{DefaultClassRealm, ClassRealm, ClassWorld}
+import org.codehaus.plexus.DefaultPlexusContainer
+import java.lang.String
 
 // TODO: 12/17/10 <coda> -- fix logging
 
@@ -28,13 +26,7 @@ trait MavenDependencies extends DefaultProject {
   override def classpathFilter = super.classpathFilter -- "*-sources.jar" -- "*-javadoc.jar"
 
   private lazy val mavenContainer = {
-    val container = new DefaultPlexusContainer()
-    val loader = ClasspathUtilities.toLoader("project" / "plugins" / "lib_managed" ** "*.jar")
-    val world = new ClassWorld()
-    val realm = world.newRealm("maven", loader)
-    container.setCoreRealm(realm)
-    container.setClassWorld(world)
-    // why the fuck don't you work?
+    val container = new DefaultPlexusContainer
     container.initialize()
     container.start()
     container
@@ -96,7 +88,7 @@ trait MavenDependencies extends DefaultProject {
 
   private lazy val antProject = {
     val p = new AntProject
-    p.addReference(classOf[PlexusContainer].getName, mavenContainer)
+    p.addReference("org.codehaus.plexus.PlexusContainer", mavenContainer)
     p
   }
 
@@ -182,6 +174,7 @@ trait MavenDependencies extends DefaultProject {
   // TODO: 12/17/10 <coda> -- publish-local
 
   override protected def publishLocalAction = task {
+    // FIXME: 12/19/10 <coda> -- This should work but doesn't, due to the way SBT filters the launch classpath
     val task = new InstallTask
     task.addPom(mavenPom)
     task.setProject(antProject)
