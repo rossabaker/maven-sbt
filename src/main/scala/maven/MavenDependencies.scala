@@ -3,6 +3,7 @@ package maven
 import scala.collection.mutable
 import java.io.File
 import sbt._
+import sbt.Process._
 import sbt.FileUtilities.copyFile
 import org.apache.tools.ant.{Project => AntProject}
 import org.apache.tools.ant.types.FileSet
@@ -171,29 +172,22 @@ trait MavenDependencies extends DefaultProject {
   }
 
   // TODO: 12/17/10 <coda> -- publish
-  // TODO: 12/17/10 <coda> -- publish-local
 
   override protected def publishLocalAction = task {
-    // FIXME: 12/19/10 <coda> -- This should work but doesn't, due to the way SBT filters the launch classpath
-    val task = new InstallTask
-    task.addPom(mavenPom)
-    task.setProject(antProject)
-
-    for (artifact <- artifacts) {
-      val attachment = task.createAttach()
-      artifact.classifier.foreach(attachment.setClassifier)
-      attachment.setType(artifact.`type`)
-
+    artifacts.map { artifact =>
       val jarName = artifact.classifier match {
         case Some(classifier) => "%s-%s-%s.jar".format(artifact.name, version.toString, classifier)
         case None => "%s-%s.jar".format(artifact.name, version.toString)
       }
-      attachment.setFile((outputPath / jarName).asFile)
-    }
-
-    task.execute()
-    None
-  } dependsOn(packageToPublishActions: _*)
+      execTask(<x>
+        mvn install:install-file
+        -Dfile={(outputPath / jarName).absolutePath}
+        -DpomFile={pomPath}
+        -DcreateChecksum=true
+        -Dclassifier={artifact.classifier.getOrElse("")}
+      </x>)
+    }.projection.map { _.run }.find { _.isDefined }.getOrElse(None)
+  } dependsOn((packageToPublishActions ++ (makePom :: Nil)): _*)
 
   override protected def updateAction = task {
     updateWithMaven(ArtifactType.Jar)
@@ -208,7 +202,7 @@ trait MavenDependencies extends DefaultProject {
     None
   } dependsOn(packageToPublishActions:_*)
 
-  def updateSourcesAction = task {
+  protected def updateSourcesAction = task {
     updateWithMaven(ArtifactType.Jar, ArtifactType.Source)
   }
   lazy val updateSources = updateSourcesAction
