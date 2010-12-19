@@ -49,13 +49,6 @@ trait MavenDependencies extends DefaultProject {
     m
   }
 
-  private lazy val scalaLibraryExclusion = {
-    val e = new Exclusion
-    e.setGroupId("org.scala-lang")
-    e.setArtifactId("scala-library")
-    e
-  }
-
   private lazy val mavenRepositories: Seq[Repository] = repositories.flatMap {
     case r: MavenRepository if r.root != "http://repo1.maven.org/maven2" => {
       val repo = new Repository
@@ -69,16 +62,14 @@ trait MavenDependencies extends DefaultProject {
     }
   }.toSeq
 
-  private lazy val mavenDependencies: Seq[Dependency] = libraryDependencies.map {d => {
+  private lazy val mavenDependencies: Seq[Dependency] = libraryDependencies.map { d =>
     val dependency = new Dependency()
     dependency.setGroupId(d.organization)
     dependency.setArtifactId(d.name)
     dependency.setVersion(d.revision)
-    dependency.addExclusion(scalaLibraryExclusion)
     d.configurations.foreach(dependency.setScope)
     dependency
-  }
-  }.toSeq
+  }.filter { d => d.getGroupId != "org.scala-lang" && d.getArtifactId != "scala-library" }.toSeq
 
   private lazy val antProject = new AntProject
 
