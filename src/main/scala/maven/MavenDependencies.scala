@@ -125,7 +125,9 @@ trait MavenDependencies extends DefaultProject {
     }
 
     for (file <- filesToCopy) {
-      copyFile(file, new File(dir.getAbsolutePath + File.separator + file.getName), log)
+      val dest = new File(dir.getAbsolutePath + File.separator + file.getName)
+      log.debug("Copying %s to %s".format(dest))
+      copyFile(file, dest, log)
     }
 
     println()
@@ -135,6 +137,8 @@ trait MavenDependencies extends DefaultProject {
   def updateWithMaven(artifactTypes: ArtifactType*): Option[String] = {
     try {
       log.info("Checking dependencies...")
+
+      log.debug("Detected dependencies: " + mavenDependencies)
 
       val compileDeps = selectDependencies("compile", Set() ++ artifactTypes)
       syncDeps(compileDeps, (managedDependencyPath / "compile").asFile)
