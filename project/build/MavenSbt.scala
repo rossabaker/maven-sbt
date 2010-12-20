@@ -1,6 +1,6 @@
 import sbt._
 
 class MavenSbt(info: ProjectInfo) extends PluginProject(info) with IdeaProject {
-  val mavenAntTasks = "org.apache.maven" % "maven-ant-tasks" % "2.1.1" withSources()
-  val plexus = "org.codehaus.plexus" % "plexus-container-default" % "1.0-alpha-9-stable-1" withSources()
+  val mavenProject = "org.apache.maven" % "maven-project" % "2.2.1" withSources()
+  val plexusUtils = "org.codehaus.plexus" % "plexus-utils" % "1.5.15" withSources()
 }
