@@ -38,7 +38,8 @@ trait MavenDependencies extends DefaultProject {
 
   private lazy val mavenModel = {
     val m = new Model
-    m.setVersion("4.0.0")
+    m.setModelVersion("4.0.0")
+    m.setName(name)
     m.setGroupId(organization)
     m.setArtifactId(name)
     m.setVersion(version.toString)
