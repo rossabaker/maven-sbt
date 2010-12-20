@@ -9,10 +9,10 @@ import org.apache.tools.ant.{Project => AntProject}
 import org.apache.tools.ant.types.FileSet
 import org.apache.tools.ant.types.resources.FileResource
 import org.apache.maven.project.MavenProject
-import org.apache.maven.model.{Repository, Model, Exclusion, Dependency}
-import org.apache.maven.artifact.ant.{InstallTask, Pom, WritePomTask, DependenciesTask}
-import org.codehaus.plexus.DefaultPlexusContainer
-import java.lang.String
+import org.apache.maven.model.{Repository, Model, Dependency}
+import org.apache.maven.artifact.ant.{Pom, DependenciesTask}
+import org.apache.maven.model.io.xpp3.MavenXpp3Writer
+import org.codehaus.plexus.util.WriterFactory
 
 // TODO: 12/17/10 <coda> -- fix logging
 
@@ -155,7 +155,40 @@ trait MavenDependencies extends DefaultProject {
     }
   }
 
-  // TODO: 12/17/10 <coda> -- publish
+  override protected def publishAction = task {
+    val repo = reflectiveRepositories.get(BasicManagedProject.PublishToName).getOrElse(error("No repository to publish to was specified"))
+    val repoId = repo.name
+    val repoUrl = repo match {
+        // TODO: 12/19/10 <coda> -- add support for URLRepository
+        // TODO: 12/19/10 <coda> -- add support for FileRepository
+      case r: MavenRepository => r.root
+      case r: SshRepository => {
+        val path = r.patterns.artifactPatterns.first
+        """ssh://%s%s""".format(r.connection.hostname.get, path.substring(0, path.indexOf('[')))
+      }
+      case r: SftpRepository => {
+        val path = r.patterns.artifactPatterns.first
+        """sftp://%s%s""".format(r.connection.hostname.get, path.substring(0, path.indexOf('[')))
+      }
+      case _ => error("Unknown repository type specified for publishing.")
+    }
+
+    artifacts.map { artifact =>
+      val jarName = artifact.classifier match {
+        case Some(classifier) => "%s-%s-%s.jar".format(artifact.name, version.toString, classifier)
+        case None => "%s-%s.jar".format(artifact.name, version.toString)
+      }
+      execTask(<x>
+        mvn deploy:deploy-file
+        -Durl={repoUrl}
+        -DrepositoryId={repoId}
+        -Dfile={(outputPath / jarName).absolutePath}
+        -DpomFile={pomPath}
+        -DcreateChecksum=true
+        -Dclassifier={artifact.classifier.getOrElse("")}
+      </x>)
+    }.projection.map { _.run }.find { _.isDefined }.getOrElse(None)
+  } dependsOn((packageToPublishActions ++ (makePom :: Nil)): _*)
 
   override protected def publishLocalAction = task {
     artifacts.map { artifact =>
@@ -178,11 +211,12 @@ trait MavenDependencies extends DefaultProject {
   }
 
   override def makePomAction = task {
-    val t = new WritePomTask
     outputPath.asFile.mkdirs()
     val pomFile = pomPath.asFile
     pomFile.createNewFile()
-    t.writeModel(mavenModel, pomFile)
+    val fw = WriterFactory.newXmlWriter(pomFile)
+    val writer = new MavenXpp3Writer
+    writer.write(fw, mavenModel)
     None
   } dependsOn(packageToPublishActions:_*)
 
