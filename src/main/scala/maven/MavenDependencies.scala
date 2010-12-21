@@ -84,6 +84,23 @@ trait MavenDependencies extends DefaultProject {
         case Some(classifier) => "%s-%s-%s.jar".format(artifact.name, version.toString, classifier)
         case None => "%s-%s.jar".format(artifact.name, version.toString)
       }
+
+      /**
+       * "Wow, Coda, that's weird," you say, squinting at what are obvious calls
+       * to the mvn executable. "Why not just embed Maven and have much more
+       * fine-grained control over the behavior of your application and thus
+       * better integration with the existing bits of SBT?"
+       *
+       * Great question, random interlocutor! The fundamental reason I'm doing
+       * something as gross as shelling out to Maven instead of just embedding
+       * it here and using it as a library is because SBT launches with a
+       * filtered classpath and Maven uses Plexus, a dependency injection
+       * framework, which requires the ability to load XML files from the
+       * classpath. Because SBT clamps down the classpath, Plexus can't find its
+       * ass with either hand and the whole thing totally fails to work.
+       *
+       * So: shelling out!
+       */
       val code = <x>
           mvn deploy:deploy-file
           -Durl={repoUrl}
