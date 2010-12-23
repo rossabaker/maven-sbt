@@ -26,7 +26,7 @@ How To Use
 
     class Plugins(info: sbt.ProjectInfo) extends sbt.PluginDefinition(info) {
       val codaRepo = "Coda Hale's Repository" at "http://repo.codahale.com/"
-      val mavenSBT = "com.codahale" % "maven-sbt" % "0.1.0"
+      val mavenSBT = "com.codahale" % "maven-sbt" % "0.0.1"
     }
 
 and update your project class to include this trait:
