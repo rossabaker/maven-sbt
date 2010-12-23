@@ -85,6 +85,9 @@ trait MavenDependencies extends DefaultProject {
         case None => "%s-%s.jar".format(artifact.name, version.toString)
       }
 
+      // FIXME: 12/23/10 <coda> -- escape paths properly
+      // FIXME: 12/23/10 <coda> -- escape repo name properly
+
       /**
        * "Wow, Coda, that's weird," you say, squinting at what are obvious calls
        * to the mvn executable. "Why not just embed Maven and have much more
@@ -130,6 +133,9 @@ trait MavenDependencies extends DefaultProject {
         case Some(classifier) => "%s-%s-%s.jar".format(artifact.name, version.toString, classifier)
         case None => "%s-%s.jar".format(artifact.name, version.toString)
       }
+
+      // FIXME: 12/23/10 <coda> -- escape paths properly
+
       val code = <x>
           mvn install:install-file
           -Dfile={(outputPath / jarName).absolutePath}
@@ -158,6 +164,8 @@ trait MavenDependencies extends DefaultProject {
 
       val compileDepPath = (managedDependencyPath / "compile").absolutePath
       val testDepPath = (managedDependencyPath / "test").absolutePath
+
+      // FIXME: 12/23/10 <coda> -- escape paths properly
 
       execTask {
        <x>
