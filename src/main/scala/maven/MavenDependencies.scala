@@ -1,76 +1,26 @@
 package maven
 
 import sbt._
-import sbt.FileUtilities.copyFile
-import scala.collection.mutable
-import org.apache.tools.ant.{Project => AntProject}
-import org.apache.tools.ant.types.FileSet
-import org.apache.tools.ant.types.resources.FileResource
-import java.io.File
-import org.apache.maven.artifact.ant.{Pom, WritePomTask, RemoteRepository, DependenciesTask}
+import sbt.Process._
 import org.apache.maven.project.MavenProject
-import java.lang.{Throwable, String}
-import org.apache.maven.model.{Repository, Model, Exclusion, Dependency}
+import org.apache.maven.model.{Repository, Model, Dependency}
+import org.apache.maven.model.io.xpp3.MavenXpp3Writer
+import org.codehaus.plexus.util.WriterFactory
+import xml.Elem
 
-class SbtLogger(log: Logger) extends org.codehaus.plexus.logging.Logger {
-  def warn(p1: String, p2: Throwable) = log.warn(p1)
-
-  def warn(p1: String) = log.warn(p1)
-
-  def isWarnEnabled = log.atLevel(Level.Warn)
-
-  def isInfoEnabled = log.atLevel(Level.Info)
-
-  def isFatalErrorEnabled = log.atLevel(Level.Error)
-
-  def isErrorEnabled = log.atLevel(Level.Error)
-
-  def isDebugEnabled = log.atLevel(Level.Debug)
-
-  def info(p1: String, p2: Throwable) = log.info(p1)
-
-  def info(p1: String) = log.info(p1)
-
-  def getThreshold = 0
-
-  def getName = ""
-
-  def getChildLogger(p1: String) = null
-
-  def fatalError(p1: String, p2: Throwable) = log.error(p1)
-
-  def fatalError(p1: String) = log.error(p1)
-
-  def error(p1: String, p2: Throwable) = log.error(p1)
-
-  def error(p1: String) = log.error(p1)
-
-  def debug(p1: String, p2: Throwable) = log.debug(p1)
-
-  def debug(p1: String) = log.debug(p1)
-}
+// TODO: 12/19/10 <coda> -- fix logging
 
 trait MavenDependencies extends DefaultProject {
-  sealed trait ArtifactType
-  object ArtifactType {
-    case object Jar extends ArtifactType
-    case object Source extends ArtifactType
-    case object Doc extends ArtifactType
-  }
-
-  private lazy val mavenPom = {
-    val p = new Pom
-    p.setMavenProject(mavenProject)
-    p
-  }
+  override def classpathFilter = super.classpathFilter -- "*-sources.jar" -- "*-javadoc.jar"
 
   private lazy val mavenProject = {
-    new MavenProject(mavenModel, new SbtLogger(log))
+    new MavenProject(mavenModel)
   }
 
   private lazy val mavenModel = {
     val m = new Model
-    m.setVersion("4.0.0")
+    m.setModelVersion("4.0.0")
+    m.setName(name)
     m.setGroupId(organization)
     m.setArtifactId(name)
     m.setVersion(version.toString)
@@ -79,13 +29,6 @@ trait MavenDependencies extends DefaultProject {
     mavenDependencies.foreach(m.addDependency)
 
     m
-  }
-
-  private lazy val scalaLibraryExclusion = {
-    val e = new Exclusion
-    e.setGroupId("org.scala-lang")
-    e.setArtifactId("scala-library")
-    e
   }
 
   private lazy val mavenRepositories: Seq[Repository] = repositories.flatMap {
@@ -101,115 +44,154 @@ trait MavenDependencies extends DefaultProject {
     }
   }.toSeq
 
-  private lazy val mavenDependencies: Seq[Dependency] = libraryDependencies.map {d => {
+  private lazy val mavenDependencies: Seq[Dependency] = libraryDependencies.map { d =>
     val dependency = new Dependency()
     dependency.setGroupId(d.organization)
     dependency.setArtifactId(d.name)
     dependency.setVersion(d.revision)
-    dependency.addExclusion(scalaLibraryExclusion)
     d.configurations.foreach(dependency.setScope)
     dependency
-  }
-  }.toSeq
+  }.filter { d => d.getGroupId != "org.scala-lang" && d.getArtifactId != "scala-library" }.toSeq
 
-  private lazy val antProject = new AntProject
-
-  private def selectDependencies(scope: String, artifactTypes: Set[ArtifactType]) = {
-    def appendFiles(filesetId: String, deps: mutable.ArrayBuffer[File]) {
-      val ref = antProject.getReference(filesetId)
-      if (ref != null) {
-        val iter = ref.asInstanceOf[FileSet].iterator
-        while (iter.hasNext) {
-          val resource = iter.next.asInstanceOf[FileResource]
-          deps += resource.getFile
-        }
-      }
-    }
-
-    val jarFilesetId = "sbt-deps-jars"
-    val sourceFilesetId = "sbt-deps-source"
-    val docFilesetId= "sbt-docs-source"
-
-    val task = new DependenciesTask
-    task.addPom(mavenPom)
-    task.setProject(antProject)
-
-    for (t <- artifactTypes) {
-      t match {
-        case ArtifactType.Jar => task.setFilesetId(jarFilesetId)
-        case ArtifactType.Source => task.setSourcesFilesetId(sourceFilesetId)
-        case ArtifactType.Doc => task.setJavadocFilesetId(docFilesetId)
-      }
-    }
-
-    task.setScopes(scope)
-
-    task.execute()
-    val deps = new mutable.ArrayBuffer[File]
-    appendFiles(jarFilesetId, deps)
-    appendFiles(sourceFilesetId, deps)
-    appendFiles(docFilesetId, deps)
-    deps.toList
-  }
-
-  private def syncDeps(files: List[File], dir: File) {
-    dir.mkdirs()
-
-    val existingFiles = Map() ++ dir.listFiles.toList.map { f => f.getName -> f }
-    val newFiles = Map() ++ files.map { f => f.getName -> f }
-    val filesToCopy = files.filter { f => !existingFiles.contains(f.getName) }
-    val filesToDelete = dir.listFiles.toList.filter { f => !newFiles.contains(f.getName) }
-
-    for (file <- filesToDelete) {
-      log.debug("Deleting %s".format(file))
-      file.delete()
-    }
-
-    for (file <- filesToCopy) {
-      copyFile(file, new File(dir.getAbsolutePath + File.separator + file.getName), log)
-    }
-
-    println()
-  }
-
-
-  def updateWithMaven(artifactTypes: ArtifactType*): Option[String] = {
-    try { {
-      log.info("Checking dependencies...")
-
-      val compileDeps = selectDependencies("compile", Set() ++ artifactTypes)
-      syncDeps(compileDeps, (managedDependencyPath / "compile").asFile)
-
-      val testDeps = selectDependencies("test", Set() ++ artifactTypes)
-      syncDeps(testDeps, (managedDependencyPath / "test").asFile)
-
-      None
-    }
-    } catch {
-      case e: Exception => {
-        log.error(e.getMessage)
-        Some("update failed")
+  private def runAll(commands: Elem*) = {
+    commands.foreach { c =>
+      if (c ! log != 0) {
+        error("Error running " + c)
       }
     }
   }
 
-  // TODO: 12/17/10 <coda> -- publish
-  // TODO: 12/17/10 <coda> -- publish-local
+  override protected def publishAction = {
+    val repo = reflectiveRepositories.get(BasicManagedProject.PublishToName).getOrElse(error("No repository to publish to was specified"))
+    val repoId = repo.name
+    val repoUrl = repo match {
+        // TODO: 12/19/10 <coda> -- add support for URLRepository
+        // TODO: 12/19/10 <coda> -- add support for FileRepository
+      case r: MavenRepository => r.root
+      case r: SshRepository => {
+        val path = r.patterns.artifactPatterns.first
+        """ssh://%s%s""".format(r.connection.hostname.get, path.substring(0, path.indexOf('[')))
+      }
+      case r: SftpRepository => {
+        val path = r.patterns.artifactPatterns.first
+        """sftp://%s%s""".format(r.connection.hostname.get, path.substring(0, path.indexOf('[')))
+      }
+      case _ => error("Unknown repository type specified for publishing.")
+    }
 
-  override lazy val makePom = task {
-    val t = new WritePomTask
+    def deployFile(artifact: Artifact) = {
+      val jarName = artifact.classifier match {
+        case Some(classifier) => "%s-%s-%s.jar".format(artifact.name, version.toString, classifier)
+        case None => "%s-%s.jar".format(artifact.name, version.toString)
+      }
+
+      /**
+       * "Wow, Coda, that's weird," you say, squinting at what are obvious calls
+       * to the mvn executable. "Why not just embed Maven and have much more
+       * fine-grained control over the behavior of your application and thus
+       * better integration with the existing bits of SBT?"
+       *
+       * Great question, random interlocutor! The fundamental reason I'm doing
+       * something as gross as shelling out to Maven instead of just embedding
+       * it here and using it as a library is because SBT launches with a
+       * filtered classpath and Maven uses Plexus, a dependency injection
+       * framework, which requires the ability to load XML files from the
+       * classpath. Because SBT clamps down the classpath, Plexus can't find its
+       * ass with either hand and the whole thing totally fails to work.
+       *
+       * So: shelling out!
+       */
+      val code = <x>
+          mvn deploy:deploy-file
+          -Durl={repoUrl}
+          -DrepositoryId={repoId}
+          -Dfile={(outputPath / jarName).absolutePath}
+          -DpomFile={pomPath}
+          -DcreateChecksum=true
+          -Dclassifier={artifact.classifier.getOrElse("")}
+      </x> ! log
+      if (code == 0) {
+        None
+      } else {
+        Some("Unable to publish " + jarName)
+      }
+    }
+
+    task {
+      log.info("Publishing...")
+      artifacts.projection.map(deployFile).find { _.isDefined }.getOrElse(None)
+    } dependsOn (makePom)
+  }
+
+
+  override protected def publishLocalAction = {
+    def installFile(artifact: Artifact) = {
+      val jarName = artifact.classifier match {
+        case Some(classifier) => "%s-%s-%s.jar".format(artifact.name, version.toString, classifier)
+        case None => "%s-%s.jar".format(artifact.name, version.toString)
+      }
+      val code = <x>
+          mvn install:install-file
+          -Dfile={(outputPath / jarName).absolutePath}
+          -DpomFile={pomPath}
+          -DcreateChecksum=true
+          -Dclassifier={artifact.classifier.getOrElse("")}
+      </x> ! log
+      if (code == 0) {
+        None
+      } else {
+        Some("Unable to publish " + jarName)
+      }
+    }
+
+    task {
+      log.info("Publishing locally...")
+      artifacts.projection.map(installFile).find { _.isDefined }.getOrElse(None)
+    } dependsOn (makePom)
+  }
+
+  override protected def updateAction = {
+    task {
+      log.info("Updating dependencies...")
+      FileUtilities.clean(managedDependencyPath / "compile", log)
+      FileUtilities.clean(managedDependencyPath / "test", log)
+
+      val compileDepPath = (managedDependencyPath / "compile").absolutePath
+      val testDepPath = (managedDependencyPath / "test").absolutePath
+
+      execTask {
+       <x>
+         mvn -f {pomPath} dependency:copy-dependencies
+         -DoutputDirectory={testDepPath}
+         -Dmdep.failOnMissingClassifierArtifact=true -DexcludeScope=compile
+       </x> #&& <x>
+         mvn -f {pomPath} dependency:copy-dependencies
+         -DoutputDirectory={testDepPath}
+         -Dmdep.failOnMissingClassifierArtifact=false -DexcludeScope=compile
+         -Dclassifier=sources
+       </x> #&& <x>
+         mvn -f {pomPath} dependency:copy-dependencies
+        -DoutputDirectory={compileDepPath}
+        -Dmdep.failOnMissingClassifierArtifact=true
+        -DincludeScope=compile -DexcludeScope=test
+       </x> #&& <x>
+         mvn -f {pomPath} dependency:copy-dependencies
+        -DoutputDirectory={compileDepPath}
+        -Dmdep.failOnMissingClassifierArtifact=false
+        -DincludeScope=compile -DexcludeScope=test
+        -Dclassifier=sources
+       </x>
+      }.run
+    } dependsOn(makePom)
+  }
+
+  override def makePomAction = task {
     outputPath.asFile.mkdirs()
     val pomFile = pomPath.asFile
     pomFile.createNewFile()
-    t.writeModel(mavenModel, pomFile)
+    val fw = WriterFactory.newXmlWriter(pomFile)
+    val writer = new MavenXpp3Writer
+    writer.write(fw, mavenModel)
     None
-  }
-
-  override lazy val update = task {
-    updateWithMaven(ArtifactType.Jar)
-  }
-
-  lazy val updateSources = task {
-    updateWithMaven(ArtifactType.Jar, ArtifactType.Source)
-  }
+  } dependsOn(packageToPublishActions:_*)
 }
