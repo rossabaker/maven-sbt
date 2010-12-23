@@ -20,9 +20,9 @@ trait MavenDependencies extends DefaultProject {
   private lazy val mavenModel = {
     val m = new Model
     m.setModelVersion("4.0.0")
-    m.setName(moduleID)
+    m.setName(name)
     m.setGroupId(organization)
-    m.setArtifactId(name)
+    m.setArtifactId(moduleID)
     m.setVersion(version.toString)
 
     mavenRepositories.foreach(m.addRepository)
