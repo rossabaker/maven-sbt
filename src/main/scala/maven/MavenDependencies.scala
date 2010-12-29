@@ -104,7 +104,7 @@ trait MavenDependencies extends DefaultProject {
        *
        * So: shelling out!
        */
-      val code = <x>
+      <x>
           mvn deploy:deploy-file
           -Durl={repoUrl}
           -DrepositoryId={repoId}
@@ -112,17 +112,12 @@ trait MavenDependencies extends DefaultProject {
           -DpomFile={pomPath}
           -DcreateChecksum=true
           -Dclassifier={artifact.classifier.getOrElse("")}
-      </x> ! log
-      if (code == 0) {
-        None
-      } else {
-        Some("Unable to publish " + jarName)
-      }
+      </x>
     }
 
-    task {
-      log.info("Publishing...")
-      artifacts.projection.map(deployFile).find { _.isDefined }.getOrElse(None)
+    val tasks = artifacts.map(deployFile).toList
+    execTask {
+      tasks.tail.foldLeft(Process(tasks.head)) { (a, b) => a #&& b }
     } dependsOn (makePom)
   }
 
@@ -147,7 +142,7 @@ trait MavenDependencies extends DefaultProject {
 
     val tasks = artifacts.map(installFile).toList
     execTask {
-      tasks.tail.foldLeft(Process(tasks.head)) { (a, b) => a #&& b}
+      tasks.tail.foldLeft(Process(tasks.head)) { (a, b) => a #&& b }
     } dependsOn (makePom)
   }
 
