@@ -136,23 +136,18 @@ trait MavenDependencies extends DefaultProject {
 
       // FIXME: 12/23/10 <coda> -- escape paths properly
 
-      val code = <x>
+      <x>
           mvn install:install-file
           -Dfile={(outputPath / jarName).absolutePath}
           -DpomFile={pomPath}
           -DcreateChecksum=true
           -Dclassifier={artifact.classifier.getOrElse("")}
-      </x> ! log
-      if (code == 0) {
-        None
-      } else {
-        Some("Unable to publish " + jarName)
-      }
+      </x>
     }
 
-    task {
-      log.info("Publishing locally...")
-      artifacts.projection.map(installFile).find { _.isDefined }.getOrElse(None)
+    val tasks = artifacts.map(installFile).toList
+    execTask {
+      tasks.tail.foldLeft(Process(tasks.head)) { (a, b) => a #&& b}
     } dependsOn (makePom)
   }
 
