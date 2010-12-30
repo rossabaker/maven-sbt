@@ -80,12 +80,14 @@ trait MavenDependencies extends DefaultProject {
   } describedAs(BasicManagedProject.CleanCacheDescription)
 
   override lazy val publish = task {
-    log.error("Not implemented yet")
+    log.info("Publishing...")
+    engine.deploy(this, moduleID, artifacts, pomPath, outputPath)
     None
-  } describedAs("Deploys your artifacts to the specified repository.")
+  } describedAs("Deploys your artifacts to your local repository.") dependsOn((List(makePom) ++ packageToPublishActions): _*)
 
   override lazy val publishLocal = task {
-    log.error("Not implemented yet")
+    log.info("Installing locally...")
+    engine.install(this, moduleID, artifacts, pomPath, outputPath)
     None
-  } describedAs("Deploys your artifacts to your local repository.")
+  } describedAs("Deploys your artifacts to your local repository.") dependsOn((List(makePom) ++ packageToPublishActions): _*)
 }

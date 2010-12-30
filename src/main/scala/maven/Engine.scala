@@ -7,7 +7,6 @@ import org.sonatype.aether.connector.wagon.{WagonRepositoryConnectorFactory, Wag
 import org.sonatype.aether.spi.connector.RepositoryConnectorFactory
 import org.apache.maven.repository.internal.{MavenRepositorySystemSession, DefaultServiceLocator}
 import org.sonatype.aether.collection.CollectRequest
-import org.sonatype.aether.util.artifact.DefaultArtifact
 import org.sonatype.aether.util.graph.PreorderNodeListGenerator
 import org.sonatype.aether.graph.{DependencyNode, Dependency}
 import org.sonatype.aether.repository.{RepositoryPolicy, RemoteRepository, LocalRepository}
@@ -17,6 +16,9 @@ import org.apache.maven.wagon.providers.file.FileWagon
 import org.apache.maven.wagon.Wagon
 import org.sonatype.aether.resolution.ArtifactResolutionException
 import org.sonatype.aether.transfer.{TransferEvent, AbstractTransferListener}
+import org.sonatype.aether.installation.InstallRequest
+import org.sonatype.aether.util.artifact.{SubArtifact, DefaultArtifact}
+import org.sonatype.aether.deployment.DeployRequest
 
 class ManualWagonProvider extends WagonProvider {
   def release(wagon: Wagon) = {}
@@ -103,7 +105,11 @@ class Engine(localRepo: String,
 //        }
 //      }
       override def transferStarted(event: TransferEvent) = {
-        log.info("Downloading " + event.getResource.getRepositoryUrl + event.getResource.getResourceName)
+        val label = event.getRequestType match {
+          case TransferEvent.RequestType.GET => "Downloading "
+          case TransferEvent.RequestType.PUT => "Uploading "
+        }
+        log.info(label + event.getResource.getRepositoryUrl + event.getResource.getResourceName)
       }
     });
     session.setRepositoryListener(new AbstractRepositoryListener {
@@ -120,11 +126,11 @@ class Engine(localRepo: String,
       }
 
       override def metadataDeploying(event: RepositoryEvent) {
-        log.debug("Deploying metadata for " + event.getArtifact + " to " + event.getRepository.getId)
+        log.debug("Deploying metadata for " + event.getMetadata + " to " + event.getRepository.getId)
       }
 
       override def metadataInstalling(event: RepositoryEvent) {
-        log.debug("Installing metadata for " + event.getArtifact + " in " + event.getRepository.getId)
+        log.debug("Installing metadata for " + event.getMetadata + " in " + event.getRepository.getId)
       }
 
       override def artifactInstalling(event: RepositoryEvent) {
@@ -205,29 +211,39 @@ class Engine(localRepo: String,
     }
   }
 
-  def install(project: Project, artifacts: Map[String, File], pom: File) {
-    // TODO: 12/29/10 <coda> -- implement installing
-//    Artifact projectOutput = new DefaultArtifact("test", "demo", "", "jar", "0.1-SNAPSHOT");
-//    projectOutput = projectOutput.setFile(new File("demo.jar"));
-//    Artifact projectPom = new SubArtifact(projectOutput, "", "pom");
-//    projectPom = projectPom.setFile(new File("pom.xml"));
-//
-//    InstallRequest installRequest = new InstallRequest();
-//    installRequest.addArtifact(projectOutput).addArtifact(projectPom);
-//    repoSystem.install(session, installRequest);
+  private def jarName(artifact: sbt.Artifact, version: Version) = artifact.classifier match {
+    case Some(classifier) => "%s-%s-%s.jar".format(artifact.name, version.toString, classifier)
+    case None => "%s-%s.jar".format(artifact.name, version.toString)
   }
 
-  def deploy(project: Project, artifacts: Map[String, File], pom: File, repository: Resolver) {
-    // TODO: 12/29/10 <coda> -- implement deploying
-//    Artifact projectOutput = new DefaultArtifact("test", "demo", "", "jar", "0.1-SNAPSHOT");
-//    projectOutput = projectOutput.setFile(new File("demo.jar"));
-//    Artifact projectPom = new SubArtifact(projectOutput, "", "pom");
-//    projectPom = projectPom.setFile(new File("pom.xml"));
-//
-//    DeployRequest deployRequest = new DeployRequest();
-//    deployRequest.addArtifact(projectOutput).addArtifact(projectPom);
-//    deployRequest.setRepository(new RemoteRepository("nexus", "default",
-//                                                     new File("target/dist-repo").toURI().toString()));
-//    repoSystem.deploy(session, deployRequest);
+  private def buildArtifacts(project: Project, moduleID: String, artifacts: Set[sbt.Artifact], pom: Path, outputPath: Path) = {
+    val (Seq(main), others) = artifacts.partition { _.classifier.isEmpty }
+
+    val mainArtifact = new DefaultArtifact(project.organization, moduleID,
+                                           "", "jar", project.version.toString)
+                            .setFile((outputPath / jarName(main, project.version)).asFile)
+
+    val otherArtifacts = others.map { other =>
+      new SubArtifact(mainArtifact, other.classifier.get, "jar")
+                .setFile((outputPath / jarName(other, project.version)).asFile)
+    }
+
+    val pomArtifact = new SubArtifact(mainArtifact, "", "pom").setFile(pom.asFile)
+
+    mainArtifact :: pomArtifact :: otherArtifacts.toList
+  }
+
+  def install(project: Project, moduleID: String, artifacts: Set[sbt.Artifact], pom: Path, outputPath: Path) {
+    val request = new InstallRequest()
+    buildArtifacts(project, moduleID, artifacts, pom, outputPath).foreach(request.addArtifact)
+    system.install(session, request)
+  }
+
+  def deploy(project: Project, moduleID: String, artifacts: Set[sbt.Artifact], pom: Path, outputPath: Path) {
+    val request = new DeployRequest
+    buildArtifacts(project, moduleID, artifacts, pom, outputPath).foreach(request.addArtifact)
+    // TODO: 12/29/10 <coda> -- actually detect which repo to publish to!
+    request.setRepository(new RemoteRepository("nexus", "default", new File("target/dist-repo").toURI().toString()))
+    system.deploy(session, request)
   }
 }
