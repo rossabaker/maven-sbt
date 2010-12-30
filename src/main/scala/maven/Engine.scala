@@ -157,6 +157,8 @@ class Engine(localRepo: String,
     }
   }
 
+  // TODO: 12/30/10 <coda> -- implement source updating
+
   def update(dependencies: Set[ModuleID], managedDependenciesPath: Path) {
     try {
       val generator = new PreorderNodeListGenerator
