@@ -1,5 +1,8 @@
 package maven
 
+import java.io.File
+import collection.mutable.HashMap
+import sbt._
 import org.sonatype.aether.connector.wagon.{WagonRepositoryConnectorFactory, WagonProvider}
 import org.sonatype.aether.spi.connector.RepositoryConnectorFactory
 import org.apache.maven.repository.internal.{MavenRepositorySystemSession, DefaultServiceLocator}
@@ -12,8 +15,8 @@ import org.sonatype.aether.{RepositoryEvent, AbstractRepositoryListener, Reposit
 import org.apache.maven.wagon.providers.http.LightweightHttpWagon
 import org.apache.maven.wagon.providers.file.FileWagon
 import org.apache.maven.wagon.Wagon
-import java.io.File
-import sbt._
+import org.sonatype.aether.resolution.ArtifactResolutionException
+import org.sonatype.aether.transfer.{TransferEvent, AbstractTransferListener}
 
 class ManualWagonProvider extends WagonProvider {
   def release(wagon: Wagon) = {}
@@ -90,7 +93,7 @@ class Engine(localRepo: String,
     session.setChecksumPolicy(checksumPolicy.value)
     session.setUpdatePolicy(snapshotUpdatePolicy.value)
     // TODO: 12/29/10 <coda> -- add transfer progress logging
-//    session.setTransferListener(new AbstractTransferListener {
+    session.setTransferListener(new AbstractTransferListener {
 //      override def transferProgressed(event: TransferEvent) {
 //        if (event.getDataLength > 10 * 1024) {
 //          val downloaded = event.getTransferredBytes / 1024
@@ -99,38 +102,33 @@ class Engine(localRepo: String,
 //          log.info("Downloaded %dK/%dK".format(downloaded, total))
 //        }
 //      }
-//    });
-    session.setRepositoryListener(new AbstractRepositoryListener {
-      override def metadataDownloading(event: RepositoryEvent) {
-        log.info("Downloading metadata from " + event.getRepository + " for " + event.getArtifact )
+      override def transferStarted(event: TransferEvent) = {
+        log.info("Downloading " + event.getResource.getRepositoryUrl + event.getResource.getResourceName)
       }
-
+    });
+    session.setRepositoryListener(new AbstractRepositoryListener {
       override def artifactDownloading(event: RepositoryEvent) {
-        log.info("Downloading artifact from " + event.getRepository + " for " + event.getArtifact)
+        log.debug("Downloading " + event.getArtifact + " from " + event.getRepository.getId)
       }
 
       override def artifactResolving(event: RepositoryEvent) {
-        log.debug("Resolving artifact for " + event.getArtifact)
-      }
-
-      override def metadataResolving(event: RepositoryEvent) {
-        log.debug("Resolving metadata from " + event.getRepository + " for " + event.getArtifact)
+        log.debug("Resolving " + event.getArtifact)
       }
 
       override def artifactDeploying(event: RepositoryEvent) {
-        log.info("Deploying " + event.getArtifact + " to " + event.getRepository)
+        log.debug("Deploying " + event.getArtifact + " to " + event.getRepository.getId)
       }
 
       override def metadataDeploying(event: RepositoryEvent) {
-        log.info("Deploying metadata for " + event.getArtifact + " to " + event.getRepository)
+        log.debug("Deploying metadata for " + event.getArtifact + " to " + event.getRepository.getId)
       }
 
       override def metadataInstalling(event: RepositoryEvent) {
-        log.info("Installing metadata for " + event.getArtifact + " in " + event.getRepository)
+        log.debug("Installing metadata for " + event.getArtifact + " in " + event.getRepository.getId)
       }
 
       override def artifactInstalling(event: RepositoryEvent) {
-        log.info("Installing " + event.getArtifact + " in " + event.getRepository)
+        log.debug("Installing " + event.getArtifact + " in " + event.getRepository.getId)
       }
     });
     session
@@ -153,32 +151,58 @@ class Engine(localRepo: String,
     }
   }
 
-  def update(dependencies: Set[ModuleID]) {
-    val generator = new PreorderNodeListGenerator
-    val request = new CollectRequest()
+  def update(dependencies: Set[ModuleID], managedDependenciesPath: Path) {
+    try {
+      val generator = new PreorderNodeListGenerator
+      val request = new CollectRequest()
 
-    repositories.reverse.foreach(request.addRepository)
+      repositories.reverse.foreach(request.addRepository)
 
-    for (dependency <- dependencies) {
-      val artifact = new DefaultArtifact(dependency.organization, dependency.name, "jar", dependency.revision)
-      request.addDependency(new Dependency(artifact, dependency.configurations.getOrElse("compile")))
+      for (dependency <- dependencies) {
+        val artifact = new DefaultArtifact(dependency.organization, dependency.name, "jar", dependency.revision)
+        request.addDependency(new Dependency(artifact, dependency.configurations.getOrElse("compile")))
+      }
+
+      val response = system.collectDependencies(session, request)
+      debugDependencies(response.getRoot, 0)
+
+      val root = response.getRoot
+      system.resolveDependencies(session, root, null)
+      root.accept(generator)
+
+      // oh my god fuck Scala 2.7
+      val artifacts = new HashMap[String, List[Dependency]]
+      val iterator = generator.getDependencies(false).iterator
+      while (iterator.hasNext) {
+        val dependency = iterator.next()
+        if (!(dependency.getArtifact.getGroupId == "org.scala-lang" &&
+                dependency.getArtifact.getArtifactId == "scala-library")) {
+          val deps = artifacts.getOrElse(dependency.getScope, Nil)
+          artifacts += (dependency.getScope -> (dependency :: deps))
+        }
+      }
+
+      for ((scope, deps) <- artifacts) {
+        val files = deps.map { _.getArtifact.getFile }
+        val filenames = Set() ++ files.map { _.getName }
+
+        val dir = managedDependenciesPath / scope
+        dir.asFile.mkdirs()
+
+        for (file <- dir.asFile.listFiles()) {
+          if (!filenames.contains(file.getName)) {
+            log.debug("Deleting " + file)
+            file.delete()
+          }
+        }
+
+        FileUtilities.copyFilesFlat(files, dir, log)
+      }
+    } catch {
+      case e: ArtifactResolutionException => {
+        log.error(e.getMessage)
+      }
     }
-
-    val response = system.collectDependencies(session, request)
-    debugDependencies(response.getRoot, 0)
-
-    val root = response.getRoot
-    system.resolveDependencies(session, root, null)
-    root.accept(generator)
-
-    // TODO: 12/29/10 <coda> -- trim scala-library and scala-compiler from dependencies
-    // TODO: 12/29/10 <coda> -- warn if a dependency needs a different scala-library version
-
-    // TODO: 12/29/10 <coda> -- group dependencies by scope
-    // TODO: 12/29/10 <coda> -- delete old artifacts
-    // TODO: 12/29/10 <coda> -- copy in new artifacts
-
-    log.info("Result: " + generator.getClassPath)
   }
 
   def install(project: Project, artifacts: Map[String, File], pom: File) {

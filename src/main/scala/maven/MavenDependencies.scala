@@ -69,10 +69,8 @@ trait MavenDependencies extends DefaultProject {
   } describedAs("Generates a POM file.")
 
   override lazy val update = task {
-    // clean libs
-    // copy stuff to whurr it should be
-    engine.update(libraryDependencies)
-
+    log.info("Updating dependencies...")
+    engine.update(libraryDependencies, managedDependencyPath)
     None
   } describedAs(BasicManagedProject.UpdateDescription)
 
