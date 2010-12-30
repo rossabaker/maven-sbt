@@ -8,17 +8,18 @@ import org.sonatype.aether.spi.connector.RepositoryConnectorFactory
 import org.apache.maven.repository.internal.{MavenRepositorySystemSession, DefaultServiceLocator}
 import org.sonatype.aether.collection.CollectRequest
 import org.sonatype.aether.util.graph.PreorderNodeListGenerator
-import org.sonatype.aether.graph.{DependencyNode, Dependency}
 import org.sonatype.aether.repository.{RepositoryPolicy, RemoteRepository, LocalRepository}
 import org.sonatype.aether.{RepositoryEvent, AbstractRepositoryListener, RepositorySystem}
 import org.apache.maven.wagon.providers.http.LightweightHttpWagon
 import org.apache.maven.wagon.providers.file.FileWagon
 import org.apache.maven.wagon.Wagon
-import org.sonatype.aether.resolution.ArtifactResolutionException
 import org.sonatype.aether.transfer.{TransferEvent, AbstractTransferListener}
 import org.sonatype.aether.installation.InstallRequest
 import org.sonatype.aether.util.artifact.{SubArtifact, DefaultArtifact}
 import org.sonatype.aether.deployment.DeployRequest
+import org.sonatype.aether.graph.{DependencyNode, Dependency}
+import org.sonatype.aether.resolution.{ArtifactRequest, ArtifactResolutionException}
+import org.sonatype.aether.artifact.Artifact
 
 class ManualWagonProvider extends WagonProvider {
   def release(wagon: Wagon) = {}
@@ -150,17 +151,39 @@ class Engine(localRepo: String,
   }.toSeq
 
   private def debugDependencies(node: DependencyNode, indent: Int) {
-    log.debug((" " * indent) + "-> " + (if (node.getDependency == null) "(root)" else node.getDependency))
+    log.debug((" " * indent) + "-> " + (if (node.getDependency == null) {
+      "(root)"
+    } else {
+      node.getDependency
+    }))
     val iterator = node.getChildren.iterator
     while (iterator.hasNext) {
       debugDependencies(iterator.next(), indent + 2)
     }
   }
 
-  // TODO: 12/30/10 <coda> -- implement source updating
+  private def resolveSubArtifact(dependency: Dependency, classifier: String): Option[Artifact] = {
+    val request = new ArtifactRequest
+    repositories.reverse.foreach(request.addRepository)
+    request.setArtifact(new SubArtifact(dependency.getArtifact, classifier, "jar"))
+    try {
+      val response = system.resolveArtifact(session, request)
+      if (response.isMissing) {
+        log.warn("Unable to download " + response.getArtifact)
+        None
+      } else {
+        Some(response.getArtifact)
+      }
+    } catch {
+      case e: ArtifactResolutionException => {
+        log.warn("Unable to download " + request.getArtifact)
+        None
+      }
+    }
+  }
 
   def update(dependencies: Set[ModuleID], managedDependenciesPath: Path) {
-    try {
+    try { {
       val generator = new PreorderNodeListGenerator
       val request = new CollectRequest()
 
@@ -179,19 +202,24 @@ class Engine(localRepo: String,
       root.accept(generator)
 
       // oh my god fuck Scala 2.7
-      val artifacts = new HashMap[String, List[Dependency]]
+      val artifacts = new HashMap[String, List[Artifact]]
       val iterator = generator.getDependencies(false).iterator
       while (iterator.hasNext) {
         val dependency = iterator.next()
         if (!(dependency.getArtifact.getGroupId == "org.scala-lang" &&
                 dependency.getArtifact.getArtifactId == "scala-library")) {
           val deps = artifacts.getOrElse(dependency.getScope, Nil)
-          artifacts += (dependency.getScope -> (dependency :: deps))
+          artifacts += (dependency.getScope -> (
+            dependency.getArtifact ::
+                    resolveSubArtifact(dependency, "sources").orElse(
+                      resolveSubArtifact(dependency, "javadoc")
+                    ).toList ::: deps
+          ))
         }
       }
 
-      for ((scope, deps) <- artifacts) {
-        val files = deps.map { _.getArtifact.getFile }
+      for ((scope, artifacts) <- artifacts) {
+        val files = artifacts.map { _.getFile }
         val filenames = Set() ++ files.map { _.getName }
 
         val dir = managedDependenciesPath / scope
@@ -206,6 +234,7 @@ class Engine(localRepo: String,
 
         FileUtilities.copyFilesFlat(files, dir, log)
       }
+    }
     } catch {
       case e: ArtifactResolutionException => {
         log.error(e.getMessage)
@@ -225,9 +254,10 @@ class Engine(localRepo: String,
                                            "", "jar", project.version.toString)
                             .setFile((outputPath / jarName(main, project.version)).asFile)
 
-    val otherArtifacts = others.map { other =>
+    val otherArtifacts = others.map {other => {
       new SubArtifact(mainArtifact, other.classifier.get, "jar")
-                .setFile((outputPath / jarName(other, project.version)).asFile)
+      .setFile((outputPath / jarName(other, project.version)).asFile)
+    }
     }
 
     val pomArtifact = new SubArtifact(mainArtifact, "", "pom").setFile(pom.asFile)
