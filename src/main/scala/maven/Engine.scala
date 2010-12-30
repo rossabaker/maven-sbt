@@ -274,7 +274,7 @@ class Engine(localRepo: String,
   def deploy(project: Project, moduleID: String, artifacts: Set[sbt.Artifact], pom: Path, outputPath: Path) {
     val request = new DeployRequest
     buildArtifacts(project, moduleID, artifacts, pom, outputPath).foreach(request.addArtifact)
-    // TODO: 12/29/10 <coda> -- actually detect which repo to publish to!
+    // FIXME: 12/29/10 <coda> -- actually detect which repo to publish to!
     request.setRepository(new RemoteRepository("nexus", "default", new File("target/dist-repo").toURI().toString()))
     system.deploy(session, request)
   }
