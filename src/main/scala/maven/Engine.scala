@@ -273,11 +273,33 @@ class Engine(localRepo: String,
     system.install(session, request)
   }
 
-  def deploy(project: Project, moduleID: String, artifacts: Set[sbt.Artifact], pom: Path, outputPath: Path) {
+  def deploy(project: ReflectiveRepositories, moduleID: String, artifacts: Set[sbt.Artifact], pom: Path, outputPath: Path) {
     val request = new DeployRequest
     buildArtifacts(project, moduleID, artifacts, pom, outputPath).foreach(request.addArtifact)
-    // FIXME: 12/29/10 <coda> -- actually detect which repo to publish to!
-    request.setRepository(new RemoteRepository("nexus", "default", new File("target/dist-repo").toURI().toString()))
+
+    val repo = project.reflectiveRepositories.get(BasicManagedProject.PublishToName).getOrElse(error("No repository to publish to was specified"))
+    val repoId = repo.name
+    val repoUrl = repo match {
+      case r: MavenRepository => r.root
+      case r: SshRepository => {
+        val path = r.patterns.artifactPatterns.first
+        """ssh://%s%s""".format(r.connection.hostname.get, path.substring(0, path.indexOf('[')))
+      }
+      case r: SftpRepository => {
+        val path = r.patterns.artifactPatterns.first
+        """sftp://%s%s""".format(r.connection.hostname.get, path.substring(0, path.indexOf('[')))
+      }
+      case r: FileRepository => {
+        val path = r.patterns.artifactPatterns.first
+        new File(path.substring(0, path.indexOf('['))).toURI.toString
+      }
+      case r: URLRepository => {
+        val path = r.patterns.artifactPatterns.first
+        path.substring(0, path.indexOf('['))
+      }
+      case _ => error("Unknown repository type specified for publishing.")
+    }
+    request.setRepository(new RemoteRepository(repoId, "default", repoUrl))
     system.deploy(session, request)
   }
 }
