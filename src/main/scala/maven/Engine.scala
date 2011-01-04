@@ -20,6 +20,7 @@ import org.sonatype.aether.deployment.DeployRequest
 import org.sonatype.aether.graph.{DependencyNode, Dependency}
 import org.sonatype.aether.resolution.{ArtifactRequest, ArtifactResolutionException}
 import org.sonatype.aether.artifact.Artifact
+import org.apache.maven.wagon.providers.ssh.external.ScpExternalWagon
 
 class ManualWagonProvider extends WagonProvider {
   def release(wagon: Wagon) = {}
@@ -28,6 +29,7 @@ class ManualWagonProvider extends WagonProvider {
     roleHint match {
       case "file" => new FileWagon
       case "http" => new LightweightHttpWagon
+      case "ssh" | "sftp" => new ScpExternalWagon
       case _ => null
     }
   }

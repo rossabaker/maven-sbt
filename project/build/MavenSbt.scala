@@ -23,6 +23,5 @@ class MavenSbt(info: ProjectInfo) extends PluginProject(info) with IdeaProject {
   val wagonVersion = "1.0-beta-7"
   val wagonFile = "org.apache.maven.wagon" % "wagon-file" % wagonVersion withSources()
   val wagonHttp = "org.apache.maven.wagon" % "wagon-http-lightweight" % wagonVersion withSources()
-  // TODO: 12/29/10 <coda> -- add sftp
-  // TODO: 12/29/10 <coda> -- add ssh
+  val wagonSsh = "org.apache.maven.wagon" % "wagon-ssh-external" % wagonVersion withSources()
 }
