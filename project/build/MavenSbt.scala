@@ -9,6 +9,21 @@ class MavenSbt(info: ProjectInfo) extends PluginProject(info) with IdeaProject {
                                      "/home/codahale/repo.codahale.com/") as ("codahale")
   override def managedStyle = ManagedStyle.Maven
 
-  val mavenProject = "org.apache.maven" % "maven-project" % "2.2.1" withSources()
-  val plexusUtils = "org.codehaus.plexus" % "plexus-utils" % "1.5.15" withSources()
+  val mavenVersion = "3.0.1"
+  val mavenAetherProvider = "org.apache.maven" % "maven-aether-provider" % mavenVersion withSources()
+  val mavenModel = "org.apache.maven" % "maven-model" % mavenVersion withSources()
+  
+  val aetherVersion = "1.8"
+  val aetherApi = "org.sonatype.aether" % "aether-api" % aetherVersion withSources()
+  val aetherImpl = "org.sonatype.aether" % "aether-impl" % aetherVersion withSources()
+  val aetherSpi = "org.sonatype.aether" % "aether-spi" % aetherVersion withSources()
+  val aetherUtil = "org.sonatype.aether" % "aether-util" % aetherVersion withSources()
+  val aetherConnectorWagon = "org.sonatype.aether" % "aether-connector-wagon" % aetherVersion withSources()
+
+  val wagonVersion = "1.0-beta-7"
+  val wagonFile = "org.apache.maven.wagon" % "wagon-file" % wagonVersion withSources()
+  val wagonHttpShared = "org.apache.maven.wagon" % "wagon-http-shared" % wagonVersion withSources() intransitive()
+  val wagonHttp = "org.apache.maven.wagon" % "wagon-http-lightweight" % wagonVersion withSources() intransitive()
+  val wagonSshCommon = "org.apache.maven.wagon" % "wagon-ssh-common" % wagonVersion withSources()
+  val wagonSsh = "org.apache.maven.wagon" % "wagon-ssh-external" % wagonVersion withSources()
 }
