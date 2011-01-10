@@ -1,7 +1,6 @@
 package maven
 
 import java.io.File
-import collection.mutable.HashMap
 import sbt._
 import org.sonatype.aether.connector.wagon.{WagonRepositoryConnectorFactory, WagonProvider}
 import org.sonatype.aether.spi.connector.RepositoryConnectorFactory
@@ -21,6 +20,7 @@ import org.sonatype.aether.graph.{DependencyNode, Dependency}
 import org.sonatype.aether.resolution.{ArtifactRequest, ArtifactResolutionException}
 import org.sonatype.aether.artifact.Artifact
 import org.apache.maven.wagon.providers.ssh.external.ScpExternalWagon
+import collection.mutable.{ArrayBuffer, HashMap}
 
 class ManualWagonProvider extends WagonProvider {
   def release(wagon: Wagon) = {}
@@ -152,18 +152,6 @@ class Engine(localRepo: String,
     case r => None
   }.toSeq
 
-  private def debugDependencies(node: DependencyNode, indent: Int) {
-    log.debug((" " * indent) + "-> " + (if (node.getDependency == null) {
-      "(root)"
-    } else {
-      node.getDependency
-    }))
-    val iterator = node.getChildren.iterator
-    while (iterator.hasNext) {
-      debugDependencies(iterator.next(), indent + 2)
-    }
-  }
-
   private def resolveSubArtifact(dependency: Dependency, classifier: String): Option[Artifact] = {
     val request = new ArtifactRequest
     repositories.reverse.foreach(request.addRepository)
@@ -184,32 +172,44 @@ class Engine(localRepo: String,
     }
   }
 
-  def update(dependencies: Set[ModuleID], managedDependenciesPath: Path) {
-    try { {
-      val generator = new PreorderNodeListGenerator
-      val request = new CollectRequest()
+  private def collectDependencies(dependencies: Set[ModuleID]): DependencyNode = {
+    val request = new CollectRequest()
 
-      repositories.reverse.foreach(request.addRepository)
+    repositories.reverse.foreach(request.addRepository)
 
-      for (dependency <- dependencies) {
-        val artifact = new DefaultArtifact(dependency.organization, dependency.name, "jar", dependency.revision)
-        request.addDependency(new Dependency(artifact, dependency.configurations.getOrElse("compile")))
-      }
+    for (dependency <- dependencies) {
+      val artifact = new DefaultArtifact(dependency.organization, dependency.name, "jar", dependency.revision)
+      request.addDependency(new Dependency(artifact, dependency.configurations.getOrElse("compile")))
+    }
 
-      val response = system.collectDependencies(session, request)
-      debugDependencies(response.getRoot, 0)
+    val response = system.collectDependencies(session, request)
+    response.getRoot
+  }
 
-      val root = response.getRoot
-      system.resolveDependencies(session, root, null)
-      root.accept(generator)
+  private def resolveDependencies(project: BasicManagedProject): List[Dependency] = {
+    val generator = new PreorderNodeListGenerator
+    val root = collectDependencies(project.libraryDependencies)
+    printDependencyTree(project, root, log.debug(_))
+    system.resolveDependencies(session, root, null)
+    root.accept(generator)
 
+    val deps = new ArrayBuffer[Dependency]
+    val iterator = generator.getDependencies(false).iterator
+    while (iterator.hasNext) {
+      deps += iterator.next()
+    }
+    deps.toList
+  }
+
+  private def isScalaLib(artifact: Artifact) = artifact.getGroupId == "org.scala-lang" &&
+          artifact.getArtifactId == "scala-library"
+
+  def update(project: BasicManagedProject) {
+    try {
       // oh my god fuck Scala 2.7
       val artifacts = new HashMap[String, List[Artifact]]
-      val iterator = generator.getDependencies(false).iterator
-      while (iterator.hasNext) {
-        val dependency = iterator.next()
-        if (!(dependency.getArtifact.getGroupId == "org.scala-lang" &&
-                dependency.getArtifact.getArtifactId == "scala-library")) {
+      for (dependency <- resolveDependencies(project)) {
+        if (!isScalaLib(dependency.getArtifact)) {
           val deps = artifacts.getOrElse(dependency.getScope, Nil)
           artifacts += (dependency.getScope -> (
             dependency.getArtifact ::
@@ -224,7 +224,7 @@ class Engine(localRepo: String,
         val files = artifacts.map { _.getFile }
         val filenames = Set() ++ files.map { _.getName }
 
-        val dir = managedDependenciesPath / scope
+        val dir = project.managedDependencyPath / scope
         dir.asFile.mkdirs()
 
         for (file <- dir.asFile.listFiles()) {
@@ -236,7 +236,6 @@ class Engine(localRepo: String,
 
         FileUtilities.copyFilesFlat(files, dir, log)
       }
-    }
     } catch {
       case e: ArtifactResolutionException => {
         log.error(e.getMessage)
@@ -249,33 +248,33 @@ class Engine(localRepo: String,
     case None => "%s-%s.jar".format(artifact.name, version.toString)
   }
 
-  private def buildArtifacts(project: Project, moduleID: String, artifacts: Set[sbt.Artifact], pom: Path, outputPath: Path) = {
-    val (Seq(main), others) = artifacts.partition { _.classifier.isEmpty }
+  private def buildArtifacts(project: BasicManagedProject) = {
+    val (Seq(main), others) = project.artifacts.partition { _.classifier.isEmpty }
 
-    val mainArtifact = new DefaultArtifact(project.organization, moduleID,
+    val mainArtifact = new DefaultArtifact(project.organization, project.moduleID,
                                            "", "jar", project.version.toString)
-                            .setFile((outputPath / jarName(main, project.version)).asFile)
+                            .setFile((project.outputPath / jarName(main, project.version)).asFile)
 
     val otherArtifacts = others.map {other => {
       new SubArtifact(mainArtifact, other.classifier.get, "jar")
-      .setFile((outputPath / jarName(other, project.version)).asFile)
+      .setFile((project.outputPath / jarName(other, project.version)).asFile)
     }
     }
 
-    val pomArtifact = new SubArtifact(mainArtifact, "", "pom").setFile(pom.asFile)
+    val pomArtifact = new SubArtifact(mainArtifact, "", "pom").setFile(project.pomPath.asFile)
 
     mainArtifact :: pomArtifact :: otherArtifacts.toList
   }
 
-  def install(project: Project, moduleID: String, artifacts: Set[sbt.Artifact], pom: Path, outputPath: Path) {
+  def install(project: BasicManagedProject) {
     val request = new InstallRequest()
-    buildArtifacts(project, moduleID, artifacts, pom, outputPath).foreach(request.addArtifact)
+    buildArtifacts(project).foreach(request.addArtifact)
     system.install(session, request)
   }
 
-  def deploy(project: ReflectiveRepositories, moduleID: String, artifacts: Set[sbt.Artifact], pom: Path, outputPath: Path) {
+  def deploy(project: BasicManagedProject) {
     val request = new DeployRequest
-    buildArtifacts(project, moduleID, artifacts, pom, outputPath).foreach(request.addArtifact)
+    buildArtifacts(project).foreach(request.addArtifact)
 
     val repo = project.reflectiveRepositories.get(BasicManagedProject.PublishToName).getOrElse(error("No repository to publish to was specified"))
     val repoId = repo.name
@@ -301,5 +300,31 @@ class Engine(localRepo: String,
     }
     request.setRepository(new RemoteRepository(repoId, "default", repoUrl))
     system.deploy(session, request)
+  }
+
+  def printDependencies(project: BasicManagedProject) {
+    printDependencyTree(project, collectDependencies(project.libraryDependencies), log.info(_))
+  }
+
+  private def printDependencyTree(project: BasicManagedProject, root: DependencyNode, print: String => Unit) {
+    val nontransitiveDependencies = project.libraryDependencies.map{d => d.organization + d.name}
+    def printDependency(node: DependencyNode, indent: Int) {
+      if (node.getDependency == null) {
+        if (project == null) {
+          print("+- (root)")
+        } else {
+          print(String.format("+- %s:%s:jar:%s", project.organization, project.name, project.version))
+        }
+      } else if (!isScalaLib(node.getDependency.getArtifact)) {
+        val artifact = node.getDependency.getArtifact
+        val signifier = if (nontransitiveDependencies.contains(artifact.getGroupId + artifact.getArtifactId)) "+" else "\\"
+        print(String.format("%s%s- %s:%s", "|  " * indent, signifier, artifact, node.getDependency.getScope))
+      }
+      val iterator = node.getChildren.iterator
+      while (iterator.hasNext) {
+        printDependency(iterator.next(), indent + 1)
+      }
+    }
+    printDependency(root, 0)
   }
 }

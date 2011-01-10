@@ -72,7 +72,7 @@ trait MavenDependencies extends DefaultProject {
 
   override lazy val update = task {
     log.info("Updating dependencies...")
-    engine.update(libraryDependencies, managedDependencyPath)
+    engine.update(this)
     None
   } describedAs(BasicManagedProject.UpdateDescription)
 
@@ -83,13 +83,21 @@ trait MavenDependencies extends DefaultProject {
 
   override lazy val publish = task {
     log.info("Publishing...")
-    engine.deploy(this, moduleID, artifacts, pomPath, outputPath)
+    engine.deploy(this)
     None
   } describedAs("Deploys your artifacts to your local repository.") dependsOn((List(makePom) ++ packageToPublishActions): _*)
 
   override lazy val publishLocal = task {
     log.info("Installing locally...")
-    engine.install(this, moduleID, artifacts, pomPath, outputPath)
+    engine.install(this)
     None
   } describedAs("Deploys your artifacts to your local repository.") dependsOn((List(makePom) ++ packageToPublishActions): _*)
+
+  lazy val dependencyTree = task {
+    engine.printDependencies(this)
+    None
+  } describedAs ("Prints a tree of your project's dependencies.")
+
+  // TODO: 1/9/11 <coda> -- override deliver
+  // TODO: 1/9/11 <coda> -- override deliverLocal
 }

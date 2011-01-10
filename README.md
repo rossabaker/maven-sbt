@@ -22,6 +22,7 @@ Right now, though, you can:
 * download dependencies with sources (even transitively)
 * publish artifacts locally (e.g., `mvn install`)
 * publish artifacts remotely (e.g., `mvn deploy` **including snapshots and metadata**)
+* print a tree of all your project's dependencies
 
 
 How To Use
