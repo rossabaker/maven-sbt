@@ -12,9 +12,9 @@ trait MavenDependencies extends DefaultProject {
 
   def localMavenRepo = Path.userHome / ".m2" / "repository"
 
-  def checksumPolicy = ChecksumPolicy.Warn
+  def checksumPolicy: ChecksumPolicy = ChecksumPolicy.Warn
 
-  def snapshotUpdatePolicy = SnapshotUpdatePolicy.Daily
+  def snapshotUpdatePolicy: SnapshotUpdatePolicy = SnapshotUpdatePolicy.Daily
 
   private lazy val engine = new Engine(localMavenRepo.absolutePath,
                                        repositories,
