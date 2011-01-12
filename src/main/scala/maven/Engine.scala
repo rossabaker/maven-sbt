@@ -218,7 +218,7 @@ class Engine(localRepo: String,
           }
 
           val deps = artifacts.getOrElse(scope, Nil)
-          artifacts += (dependency.getScope -> (
+          artifacts += (scope -> (
             dependency.getArtifact ::
                     resolveSubArtifact(dependency, "sources").orElse(
                       resolveSubArtifact(dependency, "javadoc")
