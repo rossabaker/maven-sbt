@@ -210,7 +210,14 @@ class Engine(localRepo: String,
       val artifacts = new HashMap[String, List[Artifact]]
       for (dependency <- resolveDependencies(project)) {
         if (!isScalaLib(dependency.getArtifact)) {
-          val deps = artifacts.getOrElse(dependency.getScope, Nil)
+          val scope = dependency.getScope match {
+            case "optional" => "compile"
+            case "runtime" => "compile"
+            case "provided" => "compile"
+            case s => s
+          }
+
+          val deps = artifacts.getOrElse(scope, Nil)
           artifacts += (dependency.getScope -> (
             dependency.getArtifact ::
                     resolveSubArtifact(dependency, "sources").orElse(
