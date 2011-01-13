@@ -5,7 +5,7 @@ import org.apache.maven.model.{Model, Dependency, Repository}
 import org.codehaus.plexus.util.WriterFactory
 import org.apache.maven.model.io.xpp3.MavenXpp3Writer
 
-trait MavenDependencies extends DefaultProject {
+trait MavenDependencies extends BasicManagedProject {
   override def classpathFilter = super.classpathFilter -- "*-sources.jar" -- "*-javadoc.jar"
 
   override def managedStyle = ManagedStyle.Ivy // just enforce this to make things easier
