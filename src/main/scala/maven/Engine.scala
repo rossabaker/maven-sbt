@@ -256,14 +256,20 @@ class Engine(localRepo: String,
   }
 
   private def buildArtifacts(project: BasicManagedProject) = {
-    val (Seq(main), others) = project.artifacts.partition { _.classifier.isEmpty }
+    val mainArtifactPredicate = { artifact: sbt.Artifact => 
+      project match {
+        case project: BasicScalaProject => artifact == project.mainArtifact
+        case _ => artifact.classifier.isEmpty && artifact.`type` != "asc"
+      }
+    }
+    val (Seq(main), others) = project.artifacts.partition(mainArtifactPredicate)
 
     val mainArtifact = new DefaultArtifact(project.organization, project.moduleID,
                                            "", "jar", project.version.toString)
                             .setFile((project.outputPath / jarName(main, project.version)).asFile)
 
     val otherArtifacts = others.map {other => {
-      new SubArtifact(mainArtifact, other.classifier.get, "jar")
+      new SubArtifact(mainArtifact, other.classifier.getOrElse(null), "jar")
       .setFile((project.outputPath / jarName(other, project.version)).asFile)
     }
     }
