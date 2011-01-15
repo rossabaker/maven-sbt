@@ -275,9 +275,7 @@ class Engine(localRepo: String,
     }
     }
 
-    val pomArtifact = new SubArtifact(mainArtifact, "", "pom").setFile(project.pomPath.asFile)
-
-    mainArtifact :: pomArtifact :: otherArtifacts.toList
+    mainArtifact :: otherArtifacts.toList
   }
 
   def install(project: BasicManagedProject) {

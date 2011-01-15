@@ -10,6 +10,9 @@ trait MavenDependencies extends BasicManagedProject {
 
   override def managedStyle = ManagedStyle.Ivy // just enforce this to make things easier
 
+  // We lose the POM as an artifact when managedStyle != Maven, but we still want it.
+  override def artifacts = super.artifacts ++ List(Artifact(artifactID, "pom", "pom"))
+
   def localMavenRepo = Path.userHome / ".m2" / "repository"
 
   def checksumPolicy: ChecksumPolicy = ChecksumPolicy.Warn
