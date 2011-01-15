@@ -251,8 +251,8 @@ class Engine(localRepo: String,
   }
 
   private def jarName(artifact: sbt.Artifact, version: Version) = artifact.classifier match {
-    case Some(classifier) => "%s-%s-%s.jar".format(artifact.name, version.toString, classifier)
-    case None => "%s-%s.jar".format(artifact.name, version.toString)
+    case Some(classifier) => "%s-%s-%s.%s".format(artifact.name, version.toString, classifier, artifact.extension)
+    case None => "%s-%s.%s".format(artifact.name, version.toString, artifact.extension)
   }
 
   private def buildArtifacts(project: BasicManagedProject) = {
@@ -265,11 +265,12 @@ class Engine(localRepo: String,
     val (Seq(main), others) = project.artifacts.partition(mainArtifactPredicate)
 
     val mainArtifact = new DefaultArtifact(project.organization, project.moduleID,
-                                           "", "jar", project.version.toString)
+                                           main.classifier.getOrElse(null), main.extension, 
+                                           project.version.toString)
                             .setFile((project.outputPath / jarName(main, project.version)).asFile)
 
     val otherArtifacts = others.map {other => {
-      new SubArtifact(mainArtifact, other.classifier.getOrElse(null), "jar")
+      new SubArtifact(mainArtifact, other.classifier.getOrElse(null), other.extension)
       .setFile((project.outputPath / jarName(other, project.version)).asFile)
     }
     }
