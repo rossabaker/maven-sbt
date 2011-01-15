@@ -60,7 +60,7 @@ trait MavenDependencies extends BasicManagedProject {
   }
   }.toSeq
 
-  override lazy val makePom = task {
+  override def makePomAction = task {
     outputPath.asFile.mkdirs()
     val pomFile = pomPath.asFile
     pomFile.createNewFile()
@@ -70,30 +70,31 @@ trait MavenDependencies extends BasicManagedProject {
     None
   } describedAs("Generates a POM file.")
 
-  override lazy val update = task {
+  override def updateAction = task {
     log.info("Updating dependencies...")
     engine.update(this)
     None
   } describedAs(BasicManagedProject.UpdateDescription)
 
-  override lazy val cleanCache = task {
+  override def cleanCacheAction = task {
     log.info("You don't need to nuke your cache; you're not using Ivy.")
     None
   } describedAs(BasicManagedProject.CleanCacheDescription)
 
-  override lazy val publish = task {
+  override def publishAction = task {
     log.info("Publishing...")
     engine.deploy(this)
     None
   } describedAs("Deploys your artifacts to your local repository.") dependsOn((List(makePom) ++ packageToPublishActions): _*)
 
-  override lazy val publishLocal = task {
+  override def publishLocalAction = task {
     log.info("Installing locally...")
     engine.install(this)
     None
   } describedAs("Deploys your artifacts to your local repository.") dependsOn((List(makePom) ++ packageToPublishActions): _*)
 
-  lazy val dependencyTree = task {
+  lazy val dependencyTree = dependencyTreeAction
+  def dependencyTreeAction = task {
     engine.printDependencies(this)
     None
   } describedAs ("Prints a tree of your project's dependencies.")
