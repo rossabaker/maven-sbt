@@ -1,3 +1,12 @@
+v0.1.1: Jan 17 2011
+===================
+
+* Fixed checksum and snapshot policies
+* Coerce all scopes into compile or test
+* Supports `ParentProject` and `DefaultWebProject` [R. Baker]
+* Improved main artifact detection [R. Baker]
+* Supports `sbt-gpg-plugin`
+
 v0.1.0: Jan 09 2011
 ===================
 
