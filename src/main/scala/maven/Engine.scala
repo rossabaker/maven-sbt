@@ -279,6 +279,8 @@ class Engine(localRepo: String,
   }
 
   def install(project: BasicManagedProject) {
+    // FIXME: 1/21/11 <coda> -- this won't play nicely with snapshots until aether 1.9
+    // https://issues.sonatype.org/browse/AETHER-56
     val request = new InstallRequest()
     buildArtifacts(project).foreach(request.addArtifact)
     system.install(session, request)
