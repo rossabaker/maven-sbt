@@ -7,7 +7,7 @@ import org.sonatype.aether.spi.connector.RepositoryConnectorFactory
 import org.apache.maven.repository.internal.{MavenRepositorySystemSession, DefaultServiceLocator}
 import org.sonatype.aether.collection.CollectRequest
 import org.sonatype.aether.util.graph.PreorderNodeListGenerator
-import org.sonatype.aether.repository.{RepositoryPolicy, RemoteRepository, LocalRepository}
+import org.sonatype.aether.repository.{Authentication, RepositoryPolicy, RemoteRepository, LocalRepository}
 import org.sonatype.aether.{RepositoryEvent, AbstractRepositoryListener, RepositorySystem}
 import org.apache.maven.wagon.providers.http.LightweightHttpWagon
 import org.apache.maven.wagon.providers.file.FileWagon
@@ -21,6 +21,7 @@ import org.sonatype.aether.resolution.{ArtifactRequest, ArtifactResolutionExcept
 import org.sonatype.aether.artifact.Artifact
 import org.apache.maven.wagon.providers.ssh.external.ScpExternalWagon
 import collection.mutable.{ArrayBuffer, HashMap}
+import scala.xml.{XML, NodeSeq}
 
 class ManualWagonProvider extends WagonProvider {
   def release(wagon: Wagon) = {}
@@ -143,14 +144,40 @@ class Engine(localRepo: String,
     session
   }
 
+  // TODO Find the Aethery way to load settings and configure repositories.
+  private val settingsXml = {
+    val path = Path.userHome / ".m2" / "settings.xml"
+    if (path.exists) XML.loadFile(path.asFile) else NodeSeq.Empty
+  }
+
+  private val authMap = {
+    val servers = settingsXml \\ "server" \\ "server" 
+    servers.foldLeft(Map[String, Authentication]()){ (map, server) => 
+      val auth = new Authentication(
+        (server \ "username").text,
+        (server \ "password").text,
+        (server \ "privateKey").text,
+        (server \ "passphrase").text
+      )
+      val id = (server \\ "id").text
+      map + ((id, auth))
+    }
+  }
+
   private val repositories = Resolver.withDefaultResolvers(resolvers.toSeq).flatMap {
     case r: MavenRepository => {
-      val repo = new RemoteRepository(r.name, "default", r.root)
+      val repo = newRemoteRepository(r.name, "default", r.root)
       Some(repo)
     }
     // TODO: 12/29/10 <coda> -- support non-HTTP Maven repos
     case r => None
   }.toSeq
+
+  private def newRemoteRepository(id: String, `type`: String, url: String) = {
+    val repo = new RemoteRepository(id, `type`, url)
+    repo.setAuthentication(authMap.getOrElse(id, null))
+    repo
+  }
 
   private def resolveSubArtifact(dependency: Dependency, classifier: String): Option[Artifact] = {
     val request = new ArtifactRequest
@@ -312,7 +339,7 @@ class Engine(localRepo: String,
       }
       case _ => error("Unknown repository type specified for publishing.")
     }
-    request.setRepository(new RemoteRepository(repoId, "default", repoUrl))
+    request.setRepository(newRemoteRepository(repoId, "default", repoUrl))
     system.deploy(session, request)
   }
 
