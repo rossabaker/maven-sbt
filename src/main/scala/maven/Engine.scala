@@ -29,7 +29,7 @@ class ManualWagonProvider extends WagonProvider {
   def lookup(roleHint: String) = {
     roleHint match {
       case "file" => new FileWagon
-      case "http" => new LightweightHttpWagon
+      case "http" | "https" => new LightweightHttpWagon
       case "ssh" | "sftp" => new ScpExternalWagon
       case _ => null
     }
